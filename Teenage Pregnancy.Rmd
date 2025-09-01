@@ -1,0 +1,171 @@
+---
+title: "Teenage Pregnancy"
+author: "Sharonmercy Okemwa"
+date: "2025-08-31"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## R Markdown
+
+```{r}
+library(sf)            # classes and functions for vector data
+#> Linking to GEOS 3.12.1, GDAL 3.8.4, PROJ 9.4.0; sf_use_s2() is TRUE
+
+#Note that the `echo = FALSE` parameter was added to the code chunk to prevent printing of the R code that generated the plot.
+library(terra)         # classes and functions for raster data
+library(spData)        # load geographic data
+library(spDataLarge)   # load larger geographic data
+
+```
+
+
+       
+
+```{r}
+
+##KENYA
+KECounties <- read_sf("C:/Users/SharonOkemwa/Downloads/ken_adm_iebc_20191031_shp/ken_admbnda_adm1_iebc_20191031.shp") ## Importing Kenya Counties shape file
+KE <- KECounties [KECounties$ADM0_PCODE == "KE", ]
+par (mar = c(0, 0, 0, 0))
+plot(st_geometry(KECounties), col = "#69b3a2", bg = "#f2f2f2", lwd = 0.25, border = 0)
+
+
+```
+
+```{r}
+#####Joining the teenage pregnancy data to the shp file
+
+##Importing the data
+library(readxl)
+
+TP <- readxl::read_xlsx("C:/Users/SharonOkemwa/Downloads/Teenage Pregnacy.xlsx")
+names(KE)
+head(KE)
+names(TP)
+library(dplyr)
+
+##Merging the two datasets
+KEMerged <- left_join (KE, TP, by = c ("ADM1_EN" = "County"))
+
+KEMerged <- KEMerged[KEMerged$ADM0_EN == "Kenya", ]
+
+
+KEMerged <- KEMerged %>% 
+  rename (COUNTY = ADM1_EN) 
+
+st_crs(KEMerged) <- NA
+st_bbox (KEMerged)
+#KEMerged <- st_transform(KEMerged, crs = 4326)
+
+head (KEMerged)
+dim(KEMerged)
+
+###Replacing missing value
+# Replace NA for Murang'a
+
+# ensure County is character (not factor)
+KEMerged$COUNTY <- as.character(KEMerged$COUNTY)
+
+# replace NA values with actual numbers (example values: 12.5 and 8.3)
+KEMerged$Prevalence[KEMerged$COUNTY == "Murang'a" & is.na(KEMerged$Prevalence)] <- 3.8
+KEMerged$Prevalence[KEMerged$COUNTY == "Taita Taveta" & is.na(KEMerged$Prevalence)] <- 14.5
+
+
+```
+
+```{r}
+# Create a color palette with handmade bins.
+library(RColorBrewer)
+mybins <- c(0, 5, 10, 15, 20, 30, 35,45, Inf)
+mypalette <- colorBin(
+  palette = "YlOrBr", domain = KEMerged$Prevalence,
+  na.color = "transparent", bins = mybins
+)
+
+```
+
+```{r}
+# Prepare the text for tooltips:
+mytext <- paste(
+  "ADM1_EN: ", KEMerged$COUNTY, "<br/>",
+  "Prevalence: ", KEMerged$Prevalence, "<br/>",
+   sep = ""
+) %>%
+  lapply(htmltools::HTML)
+```
+
+```{r}
+#install.packages("leaflet")
+library(leaflet)
+map <- leaflet(KEMerged) %>%
+  addTiles() %>%
+  addPolygons(
+    fillColor = ~ mypalette(Prevalence),
+    stroke = TRUE,
+    fillOpacity = 0.9,
+    color = "white",
+    weight = 0.3,
+    label = mytext,
+    labelOptions = labelOptions(
+      style = list("font-weight" = "normal", padding = "3px 8px"),
+      textsize = "13px",
+      direction = "auto"
+    )
+  ) %>%
+  addLegend(
+    pal = mypalette, values = ~Prevalence, opacity = 0.9,
+    title = "Prevalence (M)", position = "bottomleft"
+  ) %>%
+  fitBounds(
+    lng1 = st_bbox(KEMerged)$xmin, lat1 = st_bbox(KEMerged)$ymin,
+    lng2 = st_bbox(KEMerged)$xmax, lat2 = st_bbox(KEMerged)$ymax
+  )
+
+map
+
+st_geometry_type(KEMerged)
+any(st_is_empty(KEMerged))      # Should be FALSE
+all(st_is_valid(KEMerged)) 
+
+st_crs(KEMerged)
+st_crs(KEMerged) <- 4326
+
+
+
+nrow(KEMerged)
+st_bbox(KEMerged)
+
+plot(st_geometry(KEMerged))
+```
+```{r}
+
+mypalette <- colorNumeric("YlOrRd", domain = KEMerged$Prevalence)
+
+TPMap <- leaflet(KEMerged) %>%
+    addPolygons(
+    fillColor = ~mypalette(Prevalence),
+    color = "white", weight = 0.3,
+    fillOpacity = 0.9,
+    label = ~paste0(COUNTY, ": ", Prevalence)
+  ) %>%
+  addLegend(
+    pal = mypalette, values = ~Prevalence,
+    opacity = 0.9, title = "Prevalence  of Teenage Pregnacy",
+    position = "bottomleft"
+  )
+
+TPMap
+
+library(htmlwidgets)
+
+saveWidget(TPMap, "kenya_prevalence_map.html", selfcontained = TRUE)
+
+
+```
+
+
+
